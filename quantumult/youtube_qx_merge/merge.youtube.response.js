@@ -19,19 +19,19 @@
  *     的先后顺序不会互相覆盖对方写入的字段。
  */
 
-// 顺序很重要：先让 DualSubs 在“原始响应”上注入字幕轨道，
-// 再让更稳健的 Maasea 处理（Maasea 的 protobuf schema 包含并保留 captions，
-// 故 DualSubs 注入的字幕轨道会被保留）。
-// 反过来（Maasea 先）会把响应重新序列化，DualSubs 解析其产物时一旦失败就原样返回，
-// 表现为“只剩去广告/后台播放，字幕失效”。
+// 顺序很重要：必须让 DualSubs 最后执行，使其注入的字幕轨道成为最终响应、
+// 不被 Maasea 二次序列化破坏（实测：DualSubs 在后会被 Maasea 重新写回 protobuf
+// 时弄坏字幕轨道，导致 App 不显示字幕；而单独用 DualSubs 正常）。
+// Maasea 先在原始响应上去广告/开后台，其改动位于 DualSubs schema 之外的字段，
+// 会被 DualSubs 的 protobuf-es unknown-field 机制原样保留。
 var SCRIPTS = [
-  {
-    name: "DualSubs.YouTube.Response",
-    url: "https://github.com/DualSubs/YouTube/releases/latest/download/response.bundle.js",
-  },
   {
     name: "Maasea.YouTube.Response",
     url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
+  },
+  {
+    name: "DualSubs.YouTube.Response",
+    url: "https://github.com/DualSubs/YouTube/releases/latest/download/response.bundle.js",
   },
 ];
 
