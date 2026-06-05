@@ -19,14 +19,19 @@
  *     的先后顺序不会互相覆盖对方写入的字段。
  */
 
+// 顺序很重要：先让 DualSubs 在“原始响应”上注入字幕轨道，
+// 再让更稳健的 Maasea 处理（Maasea 的 protobuf schema 包含并保留 captions，
+// 故 DualSubs 注入的字幕轨道会被保留）。
+// 反过来（Maasea 先）会把响应重新序列化，DualSubs 解析其产物时一旦失败就原样返回，
+// 表现为“只剩去广告/后台播放，字幕失效”。
 var SCRIPTS = [
-  {
-    name: "Maasea.YouTube.Response",
-    url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
-  },
   {
     name: "DualSubs.YouTube.Response",
     url: "https://github.com/DualSubs/YouTube/releases/latest/download/response.bundle.js",
+  },
+  {
+    name: "Maasea.YouTube.Response",
+    url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
   },
 ];
 
@@ -193,6 +198,12 @@ function runScript(code, scriptName, request, state) {
 
 /* ----------------------------- 主流程 ----------------------------- */
 
+function sizeOf(state) {
+  if (state.bodyBytes) return "bin:" + state.bodyBytes.length;
+  if (typeof state.body === "string") return "txt:" + state.body.length;
+  return "none";
+}
+
 (async function main() {
   var state = {
     status: $response.status,
@@ -201,12 +212,16 @@ function runScript(code, scriptName, request, state) {
     bodyBytes: toUint8($response.bodyBytes),
   };
 
+  var url = ($request && $request.url) || "";
+  console.log("[MergeYouTube] start url=" + url + " in=" + sizeOf(state));
+
   for (var i = 0; i < SCRIPTS.length; i++) {
     var script = SCRIPTS[i];
+    var before = sizeOf(state);
     try {
       var code = await loadScript(script.url);
       state = await runScript(code, script.name, $request, state);
-      console.log("[MergeYouTube] finished: " + script.name);
+      console.log("[MergeYouTube] " + script.name + " " + before + " -> " + sizeOf(state));
     } catch (error) {
       // 单个脚本失败不影响另一个
       console.log("[MergeYouTube] skip " + script.name + ": " + error);
