@@ -75,13 +75,47 @@ function storeWrite(value, key) {
 
 /* ----------------------------- 下载（带缓存） ----------------------------- */
 
+// 网络下载。注意：Quantumult X 没有 $httpClient（那是 Surge/Loon 的 API），
+// QX 必须用 $task.fetch；这里两者都兼容，并手动跟随 3xx 重定向
+// （DualSubs 的 releases/latest/download 链接是 302 跳转）。
 function httpGet(url) {
   return new Promise(function (resolve, reject) {
-    $httpClient.get({ url: url, timeout: FETCH_TIMEOUT_MS }, function (error, response, data) {
-      if (error) return reject(error);
-      if (!data || (response && response.status >= 400)) return reject(new Error("HTTP fail: " + url));
-      resolve(data);
-    });
+    var hasTask = typeof $task !== "undefined" && $task && $task.fetch;
+    var hasHttpClient = typeof $httpClient !== "undefined" && $httpClient && $httpClient.get;
+
+    if (hasTask) {
+      var tries = 0;
+      var go = function (u) {
+        tries++;
+        if (tries > 6) return reject(new Error("too many redirects: " + url));
+        $task.fetch({ url: u, method: "GET" }).then(
+          function (resp) {
+            var status = resp && (resp.statusCode != null ? resp.statusCode : resp.status);
+            var headers = (resp && resp.headers) || {};
+            var loc = headers.Location || headers.location;
+            if (status >= 300 && status < 400 && loc) return go(loc);
+            if (resp && resp.body) return resolve(resp.body);
+            return reject(new Error("empty body (" + status + "): " + u));
+          },
+          function (err) {
+            reject(err);
+          }
+        );
+      };
+      go(url);
+      return;
+    }
+
+    if (hasHttpClient) {
+      $httpClient.get({ url: url, timeout: FETCH_TIMEOUT_MS }, function (error, response, data) {
+        if (error) return reject(error);
+        if (!data || (response && response.status >= 400)) return reject(new Error("HTTP fail: " + url));
+        resolve(data);
+      });
+      return;
+    }
+
+    reject(new Error("no network api ($task/$httpClient) available"));
   });
 }
 
