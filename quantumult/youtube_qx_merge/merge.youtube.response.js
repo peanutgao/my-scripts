@@ -264,11 +264,14 @@ function sizeOf(state) {
     }
   }
 
-  // 交回 QX：有二进制则按二进制输出（与 Maasea 标准输出一致：body 放 Uint8Array），
-  // 否则按文本输出。
+  // 交回 QX：与 DualSubs 原生输出完全一致——二进制用 bodyBytes 字段(ArrayBuffer)，
+  // 不再放进 body，避免 QX 对 body=二进制 的处理与原生不一致导致响应被破坏。
   var out = { status: state.status, headers: state.headers };
   if (state.bodyBytes) {
-    out.body = state.bodyBytes;
+    var u8 = state.bodyBytes;
+    out.bodyBytes = u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength
+      ? u8.buffer
+      : u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
   } else {
     out.body = state.body;
   }
