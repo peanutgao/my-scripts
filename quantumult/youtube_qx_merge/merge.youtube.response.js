@@ -25,10 +25,12 @@
 // Maasea 先在原始响应上去广告/开后台，其改动位于 DualSubs schema 之外的字段，
 // 会被 DualSubs 的 protobuf-es unknown-field 机制原样保留。
 var SCRIPTS = [
-  {
-    name: "Maasea.YouTube.Response",
-    url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
-  },
+  // ===== 诊断模式：临时只跑 DualSubs，确认 Maasea 是否在破坏字幕链路 =====
+  // 若此版字幕恢复正常 -> 证明是 Maasea 干扰，再设计共存方案。
+  // {
+  //   name: "Maasea.YouTube.Response",
+  //   url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
+  // },
   {
     name: "DualSubs.YouTube.Response",
     url: "https://github.com/DualSubs/YouTube/releases/latest/download/response.bundle.js",
