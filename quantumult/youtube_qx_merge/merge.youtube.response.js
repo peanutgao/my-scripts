@@ -1,15 +1,9 @@
 /**
  * merge.youtube.response.js
  *
- * 目的：
- * - 只让 Quantumult X 对 YouTube player/get_watch 响应执行一个脚本入口
- * - 入口内按顺序执行：
- *   1. Maasea YouTube 去广告/PIP/后台播放响应脚本
- *   2. DualSubs YouTube 字幕响应脚本
- *
- * 注意：
- * - 本脚本依赖 Quantumult X 的 $httpClient / $request / $response / $done
- * - 如果上游脚本大改，可能需要调整
+ * 单一响应入口：
+ * 1. 先执行 Maasea YouTube 去广告/PIP/后台播放响应脚本
+ * 2. 再执行 DualSubs YouTube 字幕响应脚本
  */
 
 const SCRIPTS = [
@@ -62,7 +56,6 @@ function runRemoteScript(code, name, request, response) {
     };
 
     try {
-      // 用 Function 参数注入 $request/$response/$done，避免直接覆盖 Quantumult X 全局对象。
       const fn = new Function(
         "$request",
         "$response",
