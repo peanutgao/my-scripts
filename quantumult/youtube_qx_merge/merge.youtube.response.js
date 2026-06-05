@@ -1,14 +1,13 @@
 /**
  * merge.youtube.response.js
  *
- * 单一响应入口：
- * 1. 先执行 Maasea YouTube 去广告/PIP/后台播放响应脚本
- * 2. 再执行 DualSubs YouTube 字幕响应脚本
+ * 只处理 YouTube player/get_watch 响应。
+ * 先执行 Maasea 去广告/PIP/后台播放逻辑，再执行 DualSubs 字幕逻辑。
  */
 
 const SCRIPTS = [
   {
-    name: "Maasea.YouTube.Ads.PiP.Background",
+    name: "Maasea.YouTube.Response",
     url: "https://raw.githubusercontent.com/Maasea/sgmodule/refs/heads/master/Script/Youtube/youtube.response.js",
   },
   {
@@ -22,41 +21,51 @@ const TIMEOUT_MS = 12000;
 function httpGet(url) {
   return new Promise((resolve, reject) => {
     $httpClient.get({ url, timeout: TIMEOUT_MS }, (error, response, data) => {
-      if (error) reject(error);
-      else if (!data) reject(new Error("empty script: " + url));
-      else resolve(data);
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (!data || response.status >= 400) {
+        reject(new Error("failed to load: " + url));
+        return;
+      }
+      resolve(data);
     });
   });
 }
 
-function runRemoteScript(code, name, request, response) {
+function normalizeResponse(base, result) {
+  if (!result || typeof result !== "object") return base;
+
+  const next = {
+    status: typeof result.status !== "undefined" ? result.status : base.status,
+    headers: typeof result.headers !== "undefined" ? result.headers : base.headers,
+    body: typeof result.body !== "undefined" ? result.body : base.body,
+  };
+
+  return next;
+}
+
+function runScript(code, scriptName, request, response) {
   return new Promise((resolve) => {
-    let finished = false;
+    let settled = false;
 
     const timer = setTimeout(() => {
-      if (!finished) {
-        finished = true;
-        console.log(`[MergeYouTube] ${name} timeout, keep previous body`);
-        resolve(response);
-      }
+      if (settled) return;
+      settled = true;
+      console.log("[MergeYouTube] timeout: " + scriptName);
+      resolve(response);
     }, TIMEOUT_MS);
 
-    const done = (result = {}) => {
-      if (finished) return;
-      finished = true;
+    function done(result) {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-
-      if (typeof result === "object" && result !== null) {
-        const next = Object.assign({}, response, result);
-        if (typeof result.body === "undefined") next.body = response.body;
-        resolve(next);
-      } else {
-        resolve(response);
-      }
-    };
+      resolve(normalizeResponse(response, result));
+    }
 
     try {
-      const fn = new Function(
+      const runner = new Function(
         "$request",
         "$response",
         "$done",
@@ -71,7 +80,7 @@ function runRemoteScript(code, name, request, response) {
         code
       );
 
-      fn(
+      runner(
         request,
         response,
         done,
@@ -84,34 +93,33 @@ function runRemoteScript(code, name, request, response) {
         typeof $surge !== "undefined" ? $surge : undefined,
         typeof $argument !== "undefined" ? $argument : undefined
       );
-    } catch (e) {
-      if (!finished) {
-        finished = true;
-        clearTimeout(timer);
-        console.log(`[MergeYouTube] ${name} error: ${e && e.message ? e.message : e}`);
-        resolve(response);
-      }
+    } catch (error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      console.log("[MergeYouTube] error in " + scriptName + ": " + error);
+      resolve(response);
     }
   });
 }
 
-(async () => {
-  let req = $request;
-  let resp = {
+(async function main() {
+  let response = {
     status: $response.status,
     headers: $response.headers,
     body: $response.body,
   };
 
   try {
-    for (const item of SCRIPTS) {
-      const code = await httpGet(item.url);
-      resp = await runRemoteScript(code, item.name, req, resp);
-      console.log(`[MergeYouTube] finished: ${item.name}`);
+    for (const script of SCRIPTS) {
+      const code = await httpGet(script.url);
+      response = await runScript(code, script.name, $request, response);
+      console.log("[MergeYouTube] finished: " + script.name);
     }
-    $done(resp);
-  } catch (e) {
-    console.log(`[MergeYouTube] fatal: ${e && e.message ? e.message : e}`);
-    $done({ body: resp.body, headers: resp.headers, status: resp.status });
+
+    $done(response);
+  } catch (error) {
+    console.log("[MergeYouTube] fatal: " + error);
+    $done(response);
   }
 })();
